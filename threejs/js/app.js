@@ -16,6 +16,10 @@ tjsApp = (function () {
     var mouseVector = new THREE.Vector3();
     var pickedObject = null;
     var pickClone = null;
+    var latchPoint = null;
+    var mouseMiddleDown = false;
+    var mouseLeftDown = false;
+    var mouseRightDown = false;
 
     var stats = new Stats();
 
@@ -103,9 +107,9 @@ tjsApp = (function () {
         console.log("exiting initScene");
     };
 
-    function onMouseMove(e) {
-        mouseVector.x = 2 * ( (e.clientX - offsetx) / width) - 1;
-        mouseVector.y = 1 - 2 * ( (e.clientY - offsety) / height );
+    function doPicking(evt) {
+        mouseVector.x = 2 * ( (evt.clientX - offsetx) / width) - 1;
+        mouseVector.y = 1 - 2 * ( (evt.clientY - offsety) / height );
 
         var raycaster = new THREE.Raycaster();
         raycaster.setFromCamera( mouseVector.clone(), camera );
@@ -125,6 +129,36 @@ tjsApp = (function () {
                 refresh();
             }
         }
+    }
+
+    function onMouseMove(e) {
+        if (mouseMiddleDown) {
+            doOrbit(e);
+        } else if (mouseLeftDown) {
+            doPanning(e);
+        } else {
+            // no button pressed
+            doPicking(e);
+        }
+    }
+
+    function onMouseMiddleDown(e) {
+        // TODO
+        // find the latched point coordinates
+        // if we have a picked object, get its location
+        // if not, calculate the latch location from the
+        // objects that are in front of the camera
+        // go through each object and do the transform
+        //
+        mouseMiddleDown = true;
+        if (pickedObject) {
+            latchPoint = pickedObject.position.clone();
+        }
+        z = 0
+    }
+
+    function onMouseMiddleUp(e) {
+        mouseMiddleDown = false;
     }
 
     function refresh() {
@@ -162,7 +196,6 @@ tjsApp = (function () {
 
         highlightPickedObject();
         renderer.render(scene, camera);
-        //window.requestAnimationFrame(render);
 
         stats.end();
     };
