@@ -10,7 +10,7 @@ Viewer3D.MonoCamera = ( function () {
 
         if ( window.WebGLRenderingContext ) {
             console.log("WebGL available... Yoohoo");
-            this.renderer = new THREE.WebGLRenderer();
+            this.renderer = new THREE.WebGLRenderer( {alpha: true} );
         } else {
             console.log("WebGL NOT available... :-( Using Canvas");
             this.renderer = new THREE.CanvasRenderer();
@@ -18,6 +18,8 @@ Viewer3D.MonoCamera = ( function () {
 
         this.renderer.setSize(vport.width, vport.height);
         vport.container.appendChild(this.renderer.domElement);
+
+        this.renderer.setClearColor(0xeeeeee, 1);
 
         this.camera = new THREE.PerspectiveCamera(
             35,
@@ -60,7 +62,7 @@ Viewer3D.StereoCamera = ( function () {
 
         if ( window.WebGLRenderingContext ) {
             console.log("WebGL available... Yoohoo");
-            this.renderer = new THREE.WebGLRenderer();
+            this.renderer = new THREE.WebGLRenderer( {alpha: true} );
         } else {
             console.log("WebGL NOT available... :-( Using Canvas");
             this.renderer = new THREE.CanvasRenderer();
@@ -73,6 +75,7 @@ Viewer3D.StereoCamera = ( function () {
 
         this.renderer.setSize(this.width, this.height);
         this.renderer.autoClear = false;
+        this.renderer.setClearColor(0xeeeeee, 1);
 
         vport.container.appendChild(this.renderer.domElement);
 
@@ -83,8 +86,8 @@ Viewer3D.StereoCamera = ( function () {
             1000
             )
 
-        this.camera1.position.z = 100;
-        this.camera1.position.y = 20;
+        this.camera1.position.z = 200;
+        this.camera1.position.y = 50;
 
         this.camera2 = new THREE.PerspectiveCamera(
             35,
@@ -93,8 +96,8 @@ Viewer3D.StereoCamera = ( function () {
             1000
             )
 
-        this.camera2.position.z = 100;
-        this.camera2.position.y = 20;
+        this.camera2.position.z = 200;
+        this.camera2.position.y = 50;
 
         this.scene = vport.scene;
     }
@@ -186,9 +189,77 @@ Viewer3D.Viewport = ( function () {
     return ViewportClass;
 } ) ();
 
+
 Viewer3D.Scene = ( function () {
     return THREE.Scene;
 } ) ();
+
+
+function addGround(objects) {
+
+    // create the rectangle
+    var rectLengthBy2 = 50,
+        rectWidthBy2 = 50;
+    var rectShape = new THREE.Shape();
+    rectShape.moveTo(-rectLengthBy2, -rectWidthBy2);
+    rectShape.lineTo(rectLengthBy2, -rectWidthBy2);
+    rectShape.lineTo(rectLengthBy2, rectWidthBy2);
+    rectShape.lineTo(-rectLengthBy2, rectWidthBy2);
+    rectShape.lineTo(-rectLengthBy2, -rectWidthBy2);
+
+    // create the lines
+    var offset, jump, coord;
+    var geometry = new THREE.Geometry();
+
+    var material = new THREE.LineBasicMaterial({
+        color: 0xaaaaaa
+    });
+
+    var linelen = 500;
+    var lines = [];
+
+    for (var x = 0; x <= 25; x++) {
+        offset = 100 * (Math.pow(2, (x / 10)) - 1)
+        jump = ((x % 10) * 10 * Math.pow(2, x / 10))
+        coord = offset + jump;
+
+        var geometry = new THREE.Geometry();
+        geometry.vertices.push(new THREE.Vector3(-linelen, 0, coord));
+        geometry.vertices.push(new THREE.Vector3(linelen, 0, coord));
+        objects.add( new THREE.Line(geometry, material) );
+
+        if (coord !== 0) {
+            var geometry = new THREE.Geometry();
+            geometry.vertices.push(new THREE.Vector3(-linelen, 0, -coord));
+            geometry.vertices.push(new THREE.Vector3(linelen, 0, -coord));
+            objects.add( new THREE.Line(geometry, material) );
+        }
+
+        var geometry = new THREE.Geometry();
+        geometry.vertices.push(new THREE.Vector3(coord, 0, -linelen));
+        geometry.vertices.push(new THREE.Vector3(coord, 0, linelen));
+        objects.add( new THREE.Line(geometry, material) );
+
+        if (coord !== 0) {
+            var geometry = new THREE.Geometry();
+            geometry.vertices.push(new THREE.Vector3(-coord, 0, -linelen));
+            geometry.vertices.push(new THREE.Vector3(-coord, 0, linelen));
+            objects.add( new THREE.Line(geometry, material) );
+        }
+
+    };
+
+    var rectGeom = new THREE.ShapeGeometry(rectShape);
+    var rectMesh = new THREE.Mesh(rectGeom, new THREE.MeshBasicMaterial({
+            color: 0xcccccc
+        }));
+
+    rectMesh.rotation.x = -Math.PI/2;
+    rectMesh.position.y -= 0.01;
+
+    objects.add(rectMesh);
+}
+
 
 function main() {
     var boxgeo, boxmat, box;
@@ -208,17 +279,17 @@ function main() {
     box.position.y = 2.5;
     objects.add( box );
 
-    gndgeo = new THREE.BoxGeometry( 50, 0.1, 50 );
-    gndmat = new THREE.MeshBasicMaterial( { color: 0xdddddd } );
-    gnd = new THREE.Mesh( gndgeo, gndmat );
-    gnd.position.y = -1.0;
-    objects.add( gnd );
+    // gndgeo = new THREE.BoxGeometry( 50, 0.1, 50 );
+    // gndmat = new THREE.MeshBasicMaterial( { color: 0xdddddd } );
+    // gnd = new THREE.Mesh( gndgeo, gndmat );
+    // gnd.position.y = -1.0;
+    addGround(objects);
 
     scene.add(objects);
 
     var vp = new Viewer3D.Viewport(attrs1);
 }
 
-window.onload = main();
+window.onload = main;
 // console.log(vp);
 
