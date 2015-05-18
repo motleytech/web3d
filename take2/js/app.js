@@ -71,7 +71,7 @@ Viewer3D.StereoCamera = ( function () {
 
         this.width = vport.width;
         this.height = vport.height;
-        this.width = this.width % 2 == 0 ? this.width : this.width - 1;
+        this.width = this.width % 2 === 0 ? this.width : this.width - 1;
 
         this.renderer.setSize(this.width + this.sepWidth, this.height);
         this.renderer.autoClear = false;
@@ -106,7 +106,7 @@ Viewer3D.StereoCamera = ( function () {
         // get the new width and height
         var width, height, aspect;
         width = this.vport.width;
-        width = width % 2 == 0 ? width : width - 1;
+        width = width % 2 === 0 ? width : width - 1;
         this.width = width;
 
         height = this.vport.height;
@@ -163,18 +163,108 @@ Viewer3D.Picker = ( function () {
         this.pickedObject = null;
         this.viewer = viewer;
         this.pickClone = null;
+        this.leftDown = false;
+        this.leftDownPos = null;
+        this.middleDown = false;
+        this.middleDownPos = null;
+        this.dragging = false;
+        this.latchPoint = null;
 
         var that = this;
 
-        function _onMouseMove(evt) {
+        function _onMouseMove ( evt ) {
             that.onMouseMove(evt);
         }
 
+        function _onMouseDown ( evt ) {
+            var button = evt.button;
+
+            if ( button === 0 ) {
+                that.leftDown = true;
+                that.leftDownPos = [evt.clientX, evt.clientY];
+            } else if ( button === 1 ) {
+                that.middleDown = true;
+                that.middleDownPos = [evt.clientX, evt.clientY];
+            }
+        }
+
+        function _onMouseUp ( evt ) {
+            var button = evt.button;
+
+            if ( button === 0 ) {
+                that.leftDown = false;
+                if (!that.dragging) {
+                    that.onMouseLeftClick(evt);
+                }
+            } else if ( button === 1 ) {
+                that.middleDown = false;
+                if (!that.dragging) {
+                    that.onMouseMiddleClick(evt);
+                }
+            }
+
+            if (!(that.leftDown || that.middleDown)) {
+                that.dragging = false;
+            }
+        }
+
         el.onmousemove = _onMouseMove;
+        el.onmousedown = _onMouseDown;
+        el.onmouseup = _onMouseUp;
+    };
+
+    PickerClass.prototype.getDragDist = function (p1, p2) {
+        var x1, y1, x2, y2;
+        x1 = p1[0];
+        y1 = p1[1];
+        x2 = p2[0];
+        y2 = p2[1];
+        return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+    };
+
+    PickerClass.prototype.onMouseLeftClick = function (evt) {
+        console.log("on left click");
+    };
+
+    PickerClass.prototype.onMouseMiddleClick = function (evt) {
+        console.log("on middle click");
+    };
+
+    PickerClass.prototype.doPanning = function (evt) {
+        if (this.latchPoint === null) {
+            this.latchPoint = this.findLatchPoint();
+            // move camera such that latch point moves exactly same distances
+        }
+        console.log("panning");
+    };
+
+    PickerClass.prototype.doOrbit = function (evt) {
+        console.log("orbiting");
     };
 
     PickerClass.prototype.onMouseMove = function (evt) {
-        console.log("mouse moved");
+        var pos, dist;
+
+        if (this.leftDown) {
+            pos = [evt.clientX, evt.clientY];
+            dist = this.getDragDist(this.leftDownPos, pos);
+            if (this.dragging || (dist >= 3)) {
+                this.dragging = true;
+                this.doPanning(evt);
+                return;
+            }
+        }
+
+        if (this.middleDown) {
+            pos = [evt.clientX, evt.clientY];
+            dist = this.getDragDist(this.middleDownPos, pos);
+            if (this.dragging || (dist >= 3)) {
+                this.dragging = true;
+                this.doOrbit(evt);
+                return;
+            }
+        }
+
         var mouseVector = new THREE.Vector3();
         var offsetx, offsety, offsetAttrs;
         var coordsAndCam;
@@ -254,17 +344,17 @@ Viewer3D.Picker = ( function () {
 Viewer3D.Viewport = ( function () {
     var ViewportClass = function (attrs) {
         var that = this;
-
+        this.scene = attrs.scene;
         this.container = attrs.container;
+
         this.updateViewAttrs();
 
         function _onResize() {
             that.onResize();
         }
         // subscribe to resize event
-        var resizer = new ResizeSensor(this.container, _onResize);
+        new ResizeSensor(this.container, _onResize);
 
-        this.scene = attrs.scene;
 
         if (attrs.cameraType === 'mono') {
             this.cameraWrap = new Viewer3D.MonoCamera(this);
@@ -282,28 +372,26 @@ Viewer3D.Viewport = ( function () {
         );
 
         this.render();
-    }
+    };
 
     ViewportClass.prototype.updateViewAttrs = function () {
         var crect = this.container.getClientRects()[0];
 
         this.width = crect.width - 15;
         this.height = crect.height - 15;
-    }
+    };
 
 
     ViewportClass.prototype.onResize = function (el) {
-        console.log("resize event works");
-
         this.updateViewAttrs();
         this.cameraWrap.onResize();
         this.render();
-    }
+    };
 
     ViewportClass.prototype.render = function () {
         this.picker.highlightPickedObject();
         this.cameraWrap.render();
-    }
+    };
 
     return ViewportClass;
 } ) ();
@@ -365,7 +453,7 @@ function addGround(pick, nonpick) {
             nonpick.add( new THREE.Line(geometry, material) );
         }
 
-    };
+    }
 
     var rectGeom = new THREE.ShapeGeometry(rectShape);
     var rectMesh = new THREE.Mesh(rectGeom, new THREE.MeshBasicMaterial({
@@ -373,7 +461,7 @@ function addGround(pick, nonpick) {
         }));
 
     rectMesh.rotation.x = -Math.PI/2;
-    rectMesh.position.y -= 0.01;
+    rectMesh.position.y -= 0.1;
 
     nonpick.add(rectMesh);
 }
@@ -390,7 +478,7 @@ function main() {
         container: document.getElementById("explorer1"),
         cameraType: 'stereo',
         scene: scene
-    }
+    };
 
     boxgeo = new THREE.BoxGeometry(5, 5, 5);
     boxmat = new THREE.MeshBasicMaterial( { color: 0xff2288 } );
@@ -408,5 +496,4 @@ function main() {
 }
 
 window.onload = main;
-// console.log(vp);
 
