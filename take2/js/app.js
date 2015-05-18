@@ -26,13 +26,13 @@ Viewer3D.MonoCamera = ( function () {
             vport.width / vport.height,
             1,
             1000
-            )
+            );
 
         this.camera.position.z = 100;
         this.camera.position.y = 20;
 
         this.scene = vport.scene;
-    }
+    };
 
     MonoCameraClass.prototype.onResize = function () {
         // get the new width and height
@@ -47,11 +47,11 @@ Viewer3D.MonoCamera = ( function () {
         console.log( "aspect = " + aspect.toString() );
         this.camera.aspect = aspect;
         this.camera.updateProjectionMatrix();
-    }
+    };
 
     MonoCameraClass.prototype.render = function () {
         this.renderer.render(this.scene, this.camera);
-    }
+    };
 
     return MonoCameraClass;
 } ) ();
@@ -59,6 +59,7 @@ Viewer3D.MonoCamera = ( function () {
 Viewer3D.StereoCamera = ( function () {
     var StereoCameraClass = function (vport) {
         this.vport = vport;
+        this.sepWidth = 2;
 
         if ( window.WebGLRenderingContext ) {
             console.log("WebGL available... Yoohoo");
@@ -72,8 +73,7 @@ Viewer3D.StereoCamera = ( function () {
         this.height = vport.height;
         this.width = this.width % 2 == 0 ? this.width : this.width - 1;
 
-
-        this.renderer.setSize(this.width, this.height);
+        this.renderer.setSize(this.width + this.sepWidth, this.height);
         this.renderer.autoClear = false;
         this.renderer.setClearColor(0xeeeeee, 1);
 
@@ -84,7 +84,7 @@ Viewer3D.StereoCamera = ( function () {
             this.width / (2 * vport.height),
             1,
             1000
-            )
+            );
 
         this.camera1.position.z = 200;
         this.camera1.position.y = 50;
@@ -94,13 +94,13 @@ Viewer3D.StereoCamera = ( function () {
             this.width / (2 * vport.height),
             1,
             1000
-            )
+            );
 
         this.camera2.position.z = 200;
         this.camera2.position.y = 50;
 
         this.scene = vport.scene;
-    }
+    };
 
     StereoCameraClass.prototype.onResize = function () {
         // get the new width and height
@@ -113,7 +113,7 @@ Viewer3D.StereoCamera = ( function () {
         this.height = height;
 
         // update renderer size
-        this.renderer.setSize(width, height);
+        this.renderer.setSize(width + this.sepWidth, height);
 
         // update camera aspect ratio
         aspect = width / (2 * height);
@@ -121,21 +121,135 @@ Viewer3D.StereoCamera = ( function () {
         this.camera1.updateProjectionMatrix();
         this.camera2.aspect = aspect;
         this.camera2.updateProjectionMatrix();
-    }
+    };
 
     StereoCameraClass.prototype.render = function () {
         this.renderer.clear();
         this.renderer.setViewport(0, 0, this.width/2, this.height);
         this.renderer.render(this.scene, this.camera1);
 
-        this.renderer.setViewport(this.width/2, 0, this.width/2, this.height);
+        this.renderer.setViewport(this.width/2 + this.sepWidth, 0, this.width/2, this.height);
         this.renderer.render(this.scene, this.camera2, undefined, false);
-    }
+    };
+
+    StereoCameraClass.prototype.getCoordsAndCamera = function (x, y) {
+        var x1, y1;
+        if ( ( y >= 0 ) && ( y <= this.height )) {
+            if ( ( x >= 0 ) && ( x <= (this.width / 2)) ) {
+                x1 = 2 * ( x / (this.width/2)) - 1;
+                y1 = 1 - 2 * ( y / this.height );
+                // camera 1
+                return [x1, y1, this.camera1];
+            } else if ( ( x >= (this.width/2 + this.sepWidth) ) &&
+                        ( x <= (this.width + this.sepWidth)) ) {
+                x1 = 2 * ( (x - this.width/2 - this.sepWidth ) / (this.width/2)) - 1;
+                y1 = 1 - 2 * ( y / this.height );
+                // camera 2
+                return [x1, y1, this.camera2];
+            }
+        }
+        return null;
+    };
 
     return StereoCameraClass;
 } ) ();
 
 
+Viewer3D.Picker = ( function () {
+    var PickerClass = function (el, scene, cameraWrap, viewer) {
+        this.el = el;
+        this.scene = scene;
+        this.cameraWrap = cameraWrap;
+        this.pickedObject = null;
+        this.viewer = viewer;
+        this.pickClone = null;
+
+        var that = this;
+
+        function _onMouseMove(evt) {
+            that.onMouseMove(evt);
+        }
+
+        el.onmousemove = _onMouseMove;
+    };
+
+    PickerClass.prototype.onMouseMove = function (evt) {
+        console.log("mouse moved");
+        var mouseVector = new THREE.Vector3();
+        var offsetx, offsety, offsetAttrs;
+        var coordsAndCam;
+        var objects = this.scene.theObjects;
+
+        offsetAttrs = this.el.getClientRects()[0];
+        offsetx = offsetAttrs.left;
+        offsety = offsetAttrs.top;
+
+        coordsAndCam = this.cameraWrap.getCoordsAndCamera(evt.clientX - offsetx,
+                                  evt.clientY - offsety);
+
+        if (coordsAndCam === null) {
+            this.pickedObject = null;
+            return;
+        }
+
+        mouseVector.x = coordsAndCam[0];
+        mouseVector.y = coordsAndCam[1];
+
+        var raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera( mouseVector.clone(), coordsAndCam[2] );
+        var intersects = raycaster.intersectObjects( objects.children );
+        var newPick = null;
+
+        if (intersects.length > 0) {
+            newPick = intersects[0].object;
+        }
+
+        if ((newPick !== null) && (newPick !== this.pickedObject)) {
+            this.pickedObject = newPick;
+            this.viewer.render();
+        } else {
+            if ((newPick === null) && (this.pickedObject !== null)) {
+                this.pickedObject = null;
+                this.viewer.render();
+            }
+        }
+    };
+
+    PickerClass.prototype.highlightPickedObject = function () {
+        var cloneGeo, cloneMat;
+        var pos, rot;
+        var scale = 1.002;
+
+        if ( this.pickedObject !== null ) {
+            if (this.pickClone !== null ) {
+                this.scene.remove(this.pickClone);
+                this.pickClone = null;
+            }
+            cloneGeo = this.pickedObject.geometry.clone();
+            cloneMat = new THREE.MeshBasicMaterial( {
+                color: 0xffffff,
+                opacity: 0.75,
+                transparent: true
+            } );
+
+            this.pickClone = new THREE.Mesh(cloneGeo, cloneMat);
+            pos = this.pickedObject.position;
+            rot = this.pickedObject.rotation;
+            this.pickClone.position.set(pos.x, pos.y, pos.z);
+            this.pickClone.rotation.set(rot.x, rot.y, rot.z);
+            this.pickClone.scale.set(scale, scale, scale);
+
+            this.scene.add(this.pickClone);
+        } else {
+            if (this.pickClone !== null ) {
+                this.scene.remove(this.pickClone);
+                this.pickClone = null;
+            }
+        }
+    };
+
+    return PickerClass;
+}) ();
 
 Viewer3D.Viewport = ( function () {
     var ViewportClass = function (attrs) {
@@ -161,6 +275,12 @@ Viewer3D.Viewport = ( function () {
             this.scene.add(this.cameraWrap.camera2);
         }
 
+        this.picker = new Viewer3D.Picker(this.cameraWrap.renderer.domElement,
+                                          this.scene,
+                                          this.cameraWrap,
+                                          this
+        );
+
         this.render();
     }
 
@@ -169,8 +289,6 @@ Viewer3D.Viewport = ( function () {
 
         this.width = crect.width - 15;
         this.height = crect.height - 15;
-        this.offsetx = crect.left;
-        this.offsety = crect.top;
     }
 
 
@@ -183,6 +301,7 @@ Viewer3D.Viewport = ( function () {
     }
 
     ViewportClass.prototype.render = function () {
+        this.picker.highlightPickedObject();
         this.cameraWrap.render();
     }
 
@@ -195,7 +314,7 @@ Viewer3D.Scene = ( function () {
 } ) ();
 
 
-function addGround(objects) {
+function addGround(pick, nonpick) {
 
     // create the rectangle
     var rectLengthBy2 = 50,
@@ -216,35 +335,34 @@ function addGround(objects) {
     });
 
     var linelen = 500;
-    var lines = [];
 
     for (var x = 0; x <= 25; x++) {
-        offset = 100 * (Math.pow(2, (x / 10)) - 1)
-        jump = ((x % 10) * 10 * Math.pow(2, x / 10))
+        offset = 100 * (Math.pow(2, Math.floor(x / 10)) - 1)
+        jump = ((x % 10) * 10 * Math.pow(2, Math.floor(x / 10)))
         coord = offset + jump;
 
-        var geometry = new THREE.Geometry();
+        geometry = new THREE.Geometry();
         geometry.vertices.push(new THREE.Vector3(-linelen, 0, coord));
         geometry.vertices.push(new THREE.Vector3(linelen, 0, coord));
-        objects.add( new THREE.Line(geometry, material) );
+        nonpick.add( new THREE.Line(geometry, material) );
 
         if (coord !== 0) {
-            var geometry = new THREE.Geometry();
+            geometry = new THREE.Geometry();
             geometry.vertices.push(new THREE.Vector3(-linelen, 0, -coord));
             geometry.vertices.push(new THREE.Vector3(linelen, 0, -coord));
-            objects.add( new THREE.Line(geometry, material) );
+            nonpick.add( new THREE.Line(geometry, material) );
         }
 
-        var geometry = new THREE.Geometry();
+        geometry = new THREE.Geometry();
         geometry.vertices.push(new THREE.Vector3(coord, 0, -linelen));
         geometry.vertices.push(new THREE.Vector3(coord, 0, linelen));
-        objects.add( new THREE.Line(geometry, material) );
+        nonpick.add( new THREE.Line(geometry, material) );
 
         if (coord !== 0) {
-            var geometry = new THREE.Geometry();
+            geometry = new THREE.Geometry();
             geometry.vertices.push(new THREE.Vector3(-coord, 0, -linelen));
             geometry.vertices.push(new THREE.Vector3(-coord, 0, linelen));
-            objects.add( new THREE.Line(geometry, material) );
+            nonpick.add( new THREE.Line(geometry, material) );
         }
 
     };
@@ -257,14 +375,15 @@ function addGround(objects) {
     rectMesh.rotation.x = -Math.PI/2;
     rectMesh.position.y -= 0.01;
 
-    objects.add(rectMesh);
+    nonpick.add(rectMesh);
 }
 
 
 function main() {
     var boxgeo, boxmat, box;
-    var gndgeo, gndmat, gnd;
-    var objects = new THREE.Object3D();
+    var pickableObjects = new THREE.Object3D();
+    var nonPickableObjects = new THREE.Object3D();
+
     var scene = new Viewer3D.Scene();
 
     var attrs1 = {
@@ -277,17 +396,15 @@ function main() {
     boxmat = new THREE.MeshBasicMaterial( { color: 0xff2288 } );
     box = new THREE.Mesh( boxgeo, boxmat );
     box.position.y = 2.5;
-    objects.add( box );
+    pickableObjects.add( box );
 
-    // gndgeo = new THREE.BoxGeometry( 50, 0.1, 50 );
-    // gndmat = new THREE.MeshBasicMaterial( { color: 0xdddddd } );
-    // gnd = new THREE.Mesh( gndgeo, gndmat );
-    // gnd.position.y = -1.0;
-    addGround(objects);
+    addGround(pickableObjects, nonPickableObjects);
+    scene.theObjects = pickableObjects;
 
-    scene.add(objects);
+    scene.add(pickableObjects);
+    scene.add(nonPickableObjects);
 
-    var vp = new Viewer3D.Viewport(attrs1);
+    new Viewer3D.Viewport(attrs1);
 }
 
 window.onload = main;
