@@ -7,10 +7,14 @@ var Viewer3D = Viewer3D || {};
 Viewer3D.MonoCamera = ( function () {
     var MonoCameraClass = function (vport) {
         this.vport = vport;
+        this.position = new THREE.Vector3(0, 20, 100);
 
         if ( window.WebGLRenderingContext ) {
             console.log("WebGL available... Yoohoo");
-            this.renderer = new THREE.WebGLRenderer( {alpha: true} );
+            this.renderer = new THREE.WebGLRenderer({
+                    alpha: true,
+                    antialias: true
+                });
         } else {
             console.log("WebGL NOT available... :-( Using Canvas");
             this.renderer = new THREE.CanvasRenderer();
@@ -28,11 +32,16 @@ Viewer3D.MonoCamera = ( function () {
             1000
             );
 
-        this.camera.position.z = 100;
-        this.camera.position.y = 20;
-
+        this.camera.position.copy(this.position);
         this.scene = vport.scene;
     };
+
+    MonoCameraClass.prototype.setPosition = function (pos) {
+        this.position.copy(pos);
+        this.camera.position.copy(pos);
+    };
+
+
 
     MonoCameraClass.prototype.onResize = function () {
         // get the new width and height
@@ -53,17 +62,33 @@ Viewer3D.MonoCamera = ( function () {
         this.renderer.render(this.scene, this.camera);
     };
 
+    MonoCameraClass.prototype.getCurrentCamera = function ( x, y ) {
+        return this.camera;
+    };
+
+    MonoCameraClass.prototype.getCoordsAndCamera = function (x, y) {
+        var x1, y1;
+        x1 = 2 * ( x / (this.vport.width)) - 1;
+        y1 = 1 - 2 * ( y / this.vport.height );
+        return [x1, y1, this.camera, 0];
+    };
+
     return MonoCameraClass;
 } ) ();
 
 Viewer3D.StereoCamera = ( function () {
     var StereoCameraClass = function (vport) {
         this.vport = vport;
-        this.sepWidth = 2;
+        this.viewSepWidth = 2;
+        this.camSepWidth = 0.1;
+        this.position = new THREE.Vector3(0, 50, 200);
 
         if ( window.WebGLRenderingContext ) {
             console.log("WebGL available... Yoohoo");
-            this.renderer = new THREE.WebGLRenderer( {alpha: true} );
+            this.renderer = new THREE.WebGLRenderer({
+                    alpha: true,
+                    antialias: true
+                });
         } else {
             console.log("WebGL NOT available... :-( Using Canvas");
             this.renderer = new THREE.CanvasRenderer();
@@ -73,31 +98,31 @@ Viewer3D.StereoCamera = ( function () {
         this.height = vport.height;
         this.width = this.width % 2 === 0 ? this.width : this.width - 1;
 
-        this.renderer.setSize(this.width + this.sepWidth, this.height);
+        this.renderer.setSize(this.width + this.viewSepWidth, this.height);
         this.renderer.autoClear = false;
         this.renderer.setClearColor(0xeeeeee, 1);
 
         vport.container.appendChild(this.renderer.domElement);
 
-        this.camera1 = new THREE.PerspectiveCamera(
+        this.cameraL = new THREE.PerspectiveCamera(
             35,
             this.width / (2 * vport.height),
             1,
             1000
             );
 
-        this.camera1.position.z = 200;
-        this.camera1.position.y = 50;
+        this.cameraL.position.copy(this.position);
+        this.cameraL.position.x -= this.camSepWidth;
 
-        this.camera2 = new THREE.PerspectiveCamera(
+        this.cameraR = new THREE.PerspectiveCamera(
             35,
             this.width / (2 * vport.height),
             1,
             1000
             );
 
-        this.camera2.position.z = 200;
-        this.camera2.position.y = 50;
+        this.cameraR.position.copy(this.position);
+        this.cameraR.position.x += this.camSepWidth;
 
         this.scene = vport.scene;
     };
@@ -113,23 +138,48 @@ Viewer3D.StereoCamera = ( function () {
         this.height = height;
 
         // update renderer size
-        this.renderer.setSize(width + this.sepWidth, height);
+        this.renderer.setSize(width + this.viewSepWidth, height);
 
         // update camera aspect ratio
         aspect = width / (2 * height);
-        this.camera1.aspect = aspect;
-        this.camera1.updateProjectionMatrix();
-        this.camera2.aspect = aspect;
-        this.camera2.updateProjectionMatrix();
+        this.cameraL.aspect = aspect;
+        this.cameraL.updateProjectionMatrix();
+        this.cameraR.aspect = aspect;
+        this.cameraR.updateProjectionMatrix();
     };
 
     StereoCameraClass.prototype.render = function () {
         this.renderer.clear();
         this.renderer.setViewport(0, 0, this.width/2, this.height);
-        this.renderer.render(this.scene, this.camera1);
+        // that's right... cameraR draws on the left, and cameraL on the right
+        this.renderer.render(this.scene, this.cameraR);
 
-        this.renderer.setViewport(this.width/2 + this.sepWidth, 0, this.width/2, this.height);
-        this.renderer.render(this.scene, this.camera2, undefined, false);
+        this.renderer.setViewport(this.width/2 + this.viewSepWidth, 0, this.width/2, this.height);
+        this.renderer.render(this.scene, this.cameraL, undefined, false);
+    };
+
+    StereoCameraClass.prototype.setPosition = function (pos) {
+        this.position.copy(pos);
+        this.cameraL.position.copy(pos);
+        this.cameraL.position.x -= this.camSepWidth;
+
+        this.cameraR.position.copy(pos);
+        this.cameraR.position.x += this.camSepWidth;
+    };
+
+    StereoCameraClass.prototype.getCurrentCamera = function ( x, y ) {
+        if ( ( y >= 0 ) && ( y <= this.height )) {
+            if ( ( x >= 0 ) && ( x <= (this.width / 2)) ) {
+                // camera 1
+                return this.cameraR;
+            } else if ( ( x >= (this.width/2 + this.viewSepWidth) ) &&
+                        ( x <= (this.width + this.viewSepWidth)) ) {
+                // camera 2
+                return this.cameraL;
+            }
+        }
+        return null;
+
     };
 
     StereoCameraClass.prototype.getCoordsAndCamera = function (x, y) {
@@ -139,17 +189,35 @@ Viewer3D.StereoCamera = ( function () {
                 x1 = 2 * ( x / (this.width/2)) - 1;
                 y1 = 1 - 2 * ( y / this.height );
                 // camera 1
-                return [x1, y1, this.camera1];
-            } else if ( ( x >= (this.width/2 + this.sepWidth) ) &&
-                        ( x <= (this.width + this.sepWidth)) ) {
-                x1 = 2 * ( (x - this.width/2 - this.sepWidth ) / (this.width/2)) - 1;
+                return [x1, y1, this.cameraR, this.camSepWidth];
+            } else if ( ( x >= (this.width/2 + this.viewSepWidth) ) &&
+                        ( x <= (this.width + this.viewSepWidth)) ) {
+                x1 = 2 * ( (x - this.width/2 - this.viewSepWidth ) / (this.width/2)) - 1;
                 y1 = 1 - 2 * ( y / this.height );
                 // camera 2
-                return [x1, y1, this.camera2];
+                return [x1, y1, this.cameraL, -this.camSepWidth];
             }
         }
         return null;
     };
+
+    StereoCameraClass.prototype.getViewportDetails = function (x, y) {
+        var el = this.renderer.domElement;
+        var left, top, offsetAttrs;
+        offsetAttrs = this.renderer.domElement.getClientRects()[0];
+        left = offsetAttrs.left;
+        top = offsetAttrs.top;
+
+        if ( ( y >= 0 ) && ( y <= this.height )) {
+            if ( ( x >= 0 ) && ( x <= (this.width / 2)) ) {
+                return [left, top, this.width/2, this.height];
+            } else if ( ( x >= (this.width/2 + this.viewSepWidth) ) &&
+                        ( x <= (this.width + this.viewSepWidth)) ) {
+                return [left + (this.width/2 + this.viewSepWidth), top, this.width/2, this.height];
+            }
+        }
+        return null;
+    }
 
     return StereoCameraClass;
 } ) ();
@@ -169,6 +237,9 @@ Viewer3D.Picker = ( function () {
         this.middleDownPos = null;
         this.dragging = false;
         this.latchPoint = null;
+        this.savedCamPosition = null;
+        this.panning = false;
+        this.orbiting = false;
 
         var that = this;
 
@@ -193,11 +264,13 @@ Viewer3D.Picker = ( function () {
 
             if ( button === 0 ) {
                 that.leftDown = false;
+                that.panning = false;
                 if (!that.dragging) {
                     that.onMouseLeftClick(evt);
                 }
             } else if ( button === 1 ) {
                 that.middleDown = false;
+                that.orbiting = false;
                 if (!that.dragging) {
                     that.onMouseMiddleClick(evt);
                 }
@@ -205,6 +278,7 @@ Viewer3D.Picker = ( function () {
 
             if (!(that.leftDown || that.middleDown)) {
                 that.dragging = false;
+                that.latchPoint = null;
             }
         }
 
@@ -230,19 +304,148 @@ Viewer3D.Picker = ( function () {
         console.log("on middle click");
     };
 
-    PickerClass.prototype.doPanning = function (evt) {
-        if (this.latchPoint === null) {
-            this.latchPoint = this.findLatchPoint();
-            // move camera such that latch point moves exactly same distances
+    PickerClass.prototype.findLatchPoint = function (evt) {
+        var camPos = this.cameraWrap.position.clone();
+        var pos,
+            avgPos = new THREE.Vector3();
+        if (this.pickedObject !== null) {
+            this.latchPoint = this.pickedObject.position.clone();
+            return this.latchPoint;
+        } else {
+            if (this.scene.theObjects.length === 0) {
+                this.latchPoint = new THREE.Vector3(0, 0, 0);
+                return this.latchPoint
+            }
+
+            var oneByNumPos;
+            for (var x1 = this.scene.theObjects.children.length - 1; x1 >= 0; x1--) {
+                pos = this.scene.theObjects.children[x1].position;
+                avgPos.add(pos);
+            };
+
+            oneByNumPos = 1/this.scene.theObjects.children.length;
+            avgPos.x = avgPos.x * oneByNumPos;
+            avgPos.y = avgPos.y * oneByNumPos;
+            avgPos.z = avgPos.z * oneByNumPos;
+            this.latchPoint = avgPos;
+            return this.latchPoint;
         }
+    }
+
+    PickerClass.prototype.setupPanning = function (evt) {
+        var offsetx, offsety, offsetAttrs;
+        var coordCam;
+
+        // get current camera
+        offsetAttrs = this.el.getClientRects()[0];
+        offsetx = offsetAttrs.left;
+        offsety = offsetAttrs.top;
+
+        coordCam = this.cameraWrap.getCoordsAndCamera(evt.clientX - offsetx,
+                                  evt.clientY - offsety);
+
+        this.currentCam = coordCam[2];
+        this.camXOffset = coordCam[3];
+
+        if (this.currentCam === null) {
+            this.panning = false;
+            return;
+        }
+
+        this.panning = true;
+
+        // need orig cam position
+        this.currentCamPos = this.currentCam.position.clone();
+        this.latchPoint = this.findLatchPoint();
+
+        // find camera front vector
+        // TODO : we probably don't need camFront - no we do need it.
+        // we need it to find point on latch plane (via dot product)
+        this.camFront = new THREE.Vector3(0, 0, -1);
+        this.camFront.applyQuaternion( this.currentCam.quaternion );
+
+        // dot product with cam-latch vector
+        this.latchDist = Math.abs(this.camFront.dot(this.latchPoint.clone().sub( this.currentCamPos )));
+
+        // save the unproject matrix
+        // TODO : create once and reuse.
+        var matrix = new THREE.Matrix4;
+        matrix.multiplyMatrices( this.currentCam.matrixWorld, matrix.getInverse( this.currentCam.projectionMatrix ) );
+        this.unprojectMatrix = matrix;
+
+        var vec = new THREE.Vector3(coordCam[0], coordCam[1], 0.5);
+        vec.applyProjection( this.unprojectMatrix );
+        vec = vec.sub(this.currentCamPos);
+
+        // set the pan starting point
+        // its the unproject of the current mouse vector on the latch plane
+        var pspUnit, scale;
+        pspUnit = vec.normalize();
+        scale = this.latchDist / Math.abs(pspUnit.dot(this.camFront));
+        this.panStartPoint = this.currentCamPos.clone().add(vec.multiplyScalar(scale));
+
+        var vpDetails = this.cameraWrap.getViewportDetails(evt.clientX - offsetx,
+                                  evt.clientY - offsety);
+        this.vpLeft = vpDetails[0];
+        this.vpTop = vpDetails[1];
+        this.vpWidth = vpDetails[2];
+        this.vpHeight = vpDetails[3];
+
+        this.doPanning(evt);
+    }
+
+    PickerClass.prototype.getViewportCoords = function (evt) {
+        var x, y;
+        x = evt.clientX - this.vpLeft;
+        y = evt.clientY - this.vpTop;
+
+        x = 2 * ( x / this.vpWidth) - 1;
+        y = 1 - 2 * ( y / this.vpHeight );
+
+        return [x, y];
+    }
+
+    PickerClass.prototype.doPanning = function (evt) {
+        // unproject point under mouse and find
+        var coords = this.getViewportCoords(evt);
+        var mouse3D = new THREE.Vector3(coords[0], coords[1], 0.5);
+        mouse3D.applyProjection( this.unprojectMatrix );
+        mouse3D = mouse3D.sub(this.currentCamPos);
+
+        var scale;
+        mouse3D = mouse3D.normalize();
+        scale = this.latchDist / Math.abs(mouse3D.dot(this.camFront));
+
+        // location on latch plane
+        mouse3D = this.currentCamPos.clone().add(mouse3D.multiplyScalar(scale));
+        var changeOnLatchPlane = mouse3D.sub(this.panStartPoint);
+        var newCamPos = this.currentCamPos.clone().sub(changeOnLatchPlane);
+
+        newCamPos.x = newCamPos.x - this.camXOffset;
+
+        this.cameraWrap.setPosition(newCamPos);
+        // use latch distance and mouse position to pan
         console.log("panning");
+        this.viewer.render();
     };
 
-    PickerClass.prototype.doOrbit = function (evt) {
+    PickerClass.prototype.setupOrbiting = function (evt) {
+        this.orbiting = true;
+        console.log("setting up orbiting");
+    };
+
+    PickerClass.prototype.doOrbiting = function (evt) {
         console.log("orbiting");
     };
 
     PickerClass.prototype.onMouseMove = function (evt) {
+        if (this.panning) {
+            this.doPanning(evt);
+        }
+        if (this.orbiting) {
+            this.doOrbiting(evt);
+        }
+
         var pos, dist;
 
         if (this.leftDown) {
@@ -250,7 +453,7 @@ Viewer3D.Picker = ( function () {
             dist = this.getDragDist(this.leftDownPos, pos);
             if (this.dragging || (dist >= 3)) {
                 this.dragging = true;
-                this.doPanning(evt);
+                this.setupPanning(evt);
                 return;
             }
         }
@@ -260,7 +463,7 @@ Viewer3D.Picker = ( function () {
             dist = this.getDragDist(this.middleDownPos, pos);
             if (this.dragging || (dist >= 3)) {
                 this.dragging = true;
-                this.doOrbit(evt);
+                this.setupOrbiting(evt);
                 return;
             }
         }
@@ -361,8 +564,8 @@ Viewer3D.Viewport = ( function () {
             this.scene.add(this.cameraWrap.camera);
         } else if (attrs.cameraType === 'stereo') {
             this.cameraWrap = new Viewer3D.StereoCamera(this);
-            this.scene.add(this.cameraWrap.camera1);
-            this.scene.add(this.cameraWrap.camera2);
+            this.scene.add(this.cameraWrap.cameraL);
+            this.scene.add(this.cameraWrap.cameraR);
         }
 
         this.picker = new Viewer3D.Picker(this.cameraWrap.renderer.domElement,
@@ -461,7 +664,7 @@ function addGround(pick, nonpick) {
         }));
 
     rectMesh.rotation.x = -Math.PI/2;
-    rectMesh.position.y -= 0.1;
+    rectMesh.position.y -= 0.2;
 
     nonpick.add(rectMesh);
 }
